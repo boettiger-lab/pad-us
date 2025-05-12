@@ -1,0 +1,31 @@
+# Rewrite as deployment https://nationalresearchplatform.org/documentation/userdocs/running/long-idle/
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: padus-deployment
+  labels:
+    k8s-app: padus-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: padus-app
+  template:
+    metadata:
+      labels:
+        k8s-app: padus-app
+    spec:
+      containers:
+      - name: shiny
+        image:  ghcr.io/boettiger-lab/pad-us
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 6
+            memory: 6Gi
+          limits:
+            cpu: 6
+            memory: 6Gi
+
+
