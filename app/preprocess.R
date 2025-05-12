@@ -17,15 +17,15 @@ tract_pmtiles = "https://minio.carlboettiger.info/public-social-vulnerability/20
 
 # gbif = open_dataset("s3://public-gbif/hex")
 # Full PAD variables
-pad_us = open_dataset("s3://public-biodiversity/pad-us-4/pad-us-4.parquet", recursive = FALSE) |>
+pad_us = open_dataset("https://minio.carlboettiger.info/public-biodiversity/pad-us-4/pad-us-4.parquet", recursive = FALSE) |>
   select(GAP_Sts, Mang_Type, row_n, geom, GIS_Acres)
 
 # hexed data
-tracts_z8 = open_dataset("s3://public-social-vulnerability/2022-tracts-h3-z8.parquet", recursive = FALSE) |>
+tracts_z8 = open_dataset("https://minio.carlboettiger.info/public-social-vulnerability/2022-tracts-h3-z8.parquet", recursive = FALSE) |>
             mutate(h8 = tolower(h8))
-pad_z8 =  open_dataset("s3://public-biodiversity/pad-us-4/pad-h3-z8.parquet", recursive = FALSE)
-mobi = open_dataset("s3://public-mobi/hex/all-richness-h8.parquet", recursive = FALSE) |> select(richness = Z, h8)
-svi = open_dataset("s3://public-social-vulnerability/2022/SVI2022_US_tract.parquet", recursive = FALSE)  |> 
+pad_z8 =  open_dataset("https://minio.carlboettiger.info/public-biodiversity/pad-us-4/pad-h3-z8.parquet", recursive = FALSE)
+mobi = open_dataset("https://minio.carlboettiger.info/public-mobi/hex/all-richness-h8.parquet", recursive = FALSE) |> select(richness = Z, h8)
+svi = open_dataset("https://minio.carlboettiger.info/public-social-vulnerability/2022/SVI2022_US_tract.parquet", recursive = FALSE)  |> 
   select(FIPS, RPL_THEMES) |>
   filter(RPL_THEMES > 0)
 

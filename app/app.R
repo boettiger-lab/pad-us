@@ -7,7 +7,6 @@ library(duckdbfs)
 library(shinybusy)
 source("preprocess.R")
 #source("geolocate.R")
-PMTILES = TRUE
 
 # Define the UI
 ui <- page_sidebar(
