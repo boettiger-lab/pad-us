@@ -1,0 +1,3 @@
+leafmap[maplibre]==0.38.12
+streamlit==1.44.1
+ibis-framework[duckdb]==10.3.1

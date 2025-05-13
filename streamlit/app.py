@@ -15,7 +15,7 @@ endpoint = os.environ["AWS_S3_ENDPOINT"]
 ## Initialize Data ##
 pad_pmtiles   = f"https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.pmtiles"
 tract_pmtiles = f"https://{endpoint}/public-social-vulnerability/2022/SVI2022_US_tract.pmtiles"
-pad_us    = con.read_parquet(f"https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.parquet").select("GAP_Sts", "Mang_Type", "row_n", "geom", "GIS_Acres")
+pad_us    = con.read_parquet(f"https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.parquet").select("GAP_Sts", "Mang_Type", "row_n", "geom", "GIS_Acres","State_Nm")
 tracts_z8 = con.read_parquet(f"https://{endpoint}/public-social-vulnerability/2022-tracts-h3-z8.parquet").mutate(h8 = _.h8.lower())
 pad_z8    = con.read_parquet(f"https://{endpoint}/public-biodiversity/pad-us-4/pad-h3-z8.parquet")
 mobi      = con.read_parquet(f"https://{endpoint}/public-mobi/hex/all-richness-h8.parquet").select( "h8", "Z").rename(richness = "Z")
@@ -29,9 +29,15 @@ database = (
   .left_join(pad_us, "row_n")
 )
 
+states = (
+    "All", "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+    "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "PR", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+    "VA", "WA", "WV", "WI", "WY"
+)
 
 gap_paint = {
-        'property': 'Gap_Sts',
+        'property': 'GAP_Sts',
         'type': 'categorical',
         'stops': [
             ["1", "#26633d"],
@@ -42,7 +48,10 @@ gap_paint = {
         }
 
 
-def pad_style(gap_codes):
+def pad_style(gap_codes,state):
+    if state[0] == "All":
+        state = list(states[1:])  # pick all states
+
     style =  {
     "version": 8,
     "sources": {
@@ -57,7 +66,11 @@ def pad_style(gap_codes):
             "source": "pad",
             "source-layer": "padus4",
             "type": "fill",
-            'filter': ['in', ['get', 'GAP_Sts'], ["literal", gap_codes]],
+            'filter': [
+                'all',
+                ['match', ['get', 'State_Nm'], [*state], True, False],
+                ['match', ['get', 'GAP_Sts'], gap_codes, True, False],
+            ],
             "paint": {
                 "fill-color": gap_paint,
                 "fill-opacity": 0.5
@@ -70,6 +83,7 @@ def pad_style(gap_codes):
 ## App Layout ## 
 st.set_page_config(layout="wide", page_title="CA Protected Areas Explorer", page_icon=":globe:")
 
+
 with st.sidebar:
     hex_mode = st.toggle("hex mode")
     gap_codes = st.pills(
@@ -78,14 +92,23 @@ with st.sidebar:
         default=["1", "2"],
         selection_mode="multi"
     )
+    state = st.selectbox("State selection",states, index = 6)
 
+    # even if we only pick 1 state or 1 gap code, make them lists so it still works with our functions 
+    if isinstance(state, str):
+        state = [state]  # convert single string to list
+
+    if isinstance(gap_codes, str):
+        gap_codes = [gap_codes]
 
 ## Respond to sidebar
 m = leafmap.Map(style = "positron")
-m.add_pmtiles(pad_pmtiles)
-# m.add_pmtiles(pad_pmtiles, style=pad_style(gap_codes), opacity=0.5, tooltip=True, fit_bounds=True)
-m.to_streamlit()
+m.add_pmtiles(pad_pmtiles, style=pad_style(gap_codes,state), opacity=0.5, tooltip=True, fit_bounds=True)
 
+# get bounds for the state(s) we selected
+if state[0] != "All":
+    bounds = pad_us.filter(_.State_Nm.isin([*state])).execute().total_bounds
+    m.fit_bounds(list(bounds)) # need to zoom to filtered area
 
 ## Render display panels
 col1, col2 = st.columns([2,1])
