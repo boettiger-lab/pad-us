@@ -5,7 +5,7 @@ library(dplyr)
 library(mapgl)
 library(duckdbfs)
 library(shinybusy)
-source("preprocess.R")
+source("utils.R")
 #source("geolocate.R")
 
 # Define the UI
@@ -35,18 +35,25 @@ ui <- page_sidebar(
       card_header("Errata"),
       shiny::markdown(readr::read_file("footer.md")),
   ),
+
   sidebar = sidebar(
     open = FALSE, width = 250,
     input_switch("switch", "hex mode"),
-    checkboxGroupInput(
-      "gap_codes",
-      "GAP codes",
-      c( 
-        "1" = "1",
-        "2" = "2",
-        "3" = "3",
-        "4" = "4"
-      ), selected = c("1", "2")),
+    checkboxGroupInput("gap_codes",
+                       "GAP codes",
+                       c("1" = "1",
+                         "2" = "2",
+                         "3" = "3",
+                         "4" = "4"
+                       ),
+                       selected = c("1", "2")),
+    radioButtons(
+      inputId = "color_by",
+      label = "Color map by:",
+      choices = list(
+        "GAP code" = "GAP_Sts",
+        "Manager Type" = "Mang_Type"
+      )),
     input_dark_mode(id = "mode"),
   ),
   theme = bs_theme(version = "5")
@@ -59,23 +66,25 @@ server <- function(input, output, session) {
 
   output$box <- renderUI({
     req(input$state)
-    df <- protected_area(input$state, "GAP_Sts")
-    total <- df |> filter(GAP_Sts %in% input$gap_codes) |> pull(percent) |> sum() |> round(3)
-    total <- total * 100
-
+    req(input$gap_codes)
+    total <- compute_total(input$state, input$gap_codes)
     value_box(glue("Protected Area:"), glue("{total}%"), showcase = plotOutput("plot"))
   })
 
   output$map <- renderMaplibre({
 
     if (!input$switch) {
-      gdf <- compute_gdf(input$state) |> filter(GAP_Sts %in% input$gap_codes)
-      map_filter <- mapgl_filter(gdf, "row_n")
-      m <- pmtiles_map(pad_pmtiles, "padus4", "row_n", map_filter, GAP_fill_color)
 
+      map_filter <- compute_filter(input$state, input$gap_codes)
+      m <- pmtiles_map(pad_pmtiles, "padus4", "row_n",
+                       map_filter, input$color_by, input$state)
+      
     } else {
 
-      m <- hex_map(state = input$state, "Unit_Nm", GAP_fill_color, input$gap_codes)
+      m <- hex_map(input$state,
+                   "Unit_Nm",
+                   input$color_by,
+                   input$gap_codes)
     }
 
     m |>  

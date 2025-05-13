@@ -1,4 +1,13 @@
-source("app/preprocess.R")
+Sys.getenv("GDAL_DATA")
+
+source("app/utils.R")
+
+map_filter <- compute_filter("All", gap_codes = c("1", "2", "3"))
+pmtiles_map(pad_pmtiles, "padus4", "row_n", map_filter)
+
+
+
+hex_map("Delaware")
 
 protected_area("California", "GAP_Sts") |>
   tidyr::replace_na(list(GAP_Sts = "5")) |>
@@ -24,19 +33,6 @@ ggplot(aes(GAP_Sts, social_vulnerability, fill = GAP_Sts)) +
 geom_col(show.legend = FALSE) + theme_void(26) + 
 ggtitle("social vulnerability") + gg_GAP_colors()
 
-
-
-gdf <- compute_gdf("All") |> filter(GAP_Sts %in% c("1", "2"))
-map_filter <- mapgl_filter(gdf, "row_n")
-pmtiles_map(pad_pmtiles, "padus4", "row_n", map_filter, GAP_fill_color)
-
-
-
-
-
-hex_map(state = "California",
-        tooltip = "Unit_Nm",
-        fill_color = "darkgreen")
 
 
 ## GAP information not available for PMTiles
