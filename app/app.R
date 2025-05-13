@@ -68,8 +68,6 @@ server <- function(input, output, session) {
 
   output$map <- renderMaplibre({
 
-    print(input$gap_codes)
-
     if (!input$switch) {
       gdf <- compute_gdf(input$state) |> filter(GAP_Sts %in% input$gap_codes)
       map_filter <- mapgl_filter(gdf, "row_n")
@@ -77,7 +75,7 @@ server <- function(input, output, session) {
 
     } else {
 
-      m <- hex_map(state = input$state, "Unit_Nm", GAP_fill_color)
+      m <- hex_map(state = input$state, "Unit_Nm", GAP_fill_color, input$gap_codes)
     }
 
     m |>  

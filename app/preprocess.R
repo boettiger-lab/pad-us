@@ -103,16 +103,18 @@ pmtiles_map <- function (pmtiles = pad_pmtiles,
 
 hex_map <- function(state = "California",
                     tooltip = "Unit_Nm",
-                    fill_color = GAP_fill_color) {
+                    fill_color = GAP_fill_color,
+                    gap_codes = c("1", "2", "3", "4")) {
 
   path <- "public-data/cache/hexes-ex5.h3j"
   df <- database
-  if (state != "All") {
-    df <- df |> filter(STATE ==  state)
-  }
+
+  ## don't attempt the whole US as hex!
+  # if (state != "All")  df <- df |> filter(STATE ==  state)
+  
   df |>
     select(-geom) |>
-    filter(STATE == state) |> 
+    filter(STATE == state, GAP_Sts %in% gap_codes) |> 
     tidyr::replace_na(list("GAP_Sts" = "5")) |>
     rename(h3id = h8) |> 
     to_h3j(glue("s3://{path}"))
