@@ -37,7 +37,16 @@ ui <- page_sidebar(
   ),
   sidebar = sidebar(
     open = FALSE, width = 250,
-    input_switch("switch", "hex mode"), 
+    input_switch("switch", "hex mode"),
+    checkboxGroupInput(
+      "gap_codes",
+      "GAP codes",
+      c( 
+        "1" = "1",
+        "2" = "2",
+        "3" = "3",
+        "4" = "4"
+      ), selected = c("1", "2")),
     input_dark_mode(id = "mode"),
   ),
   theme = bs_theme(version = "5")
@@ -51,7 +60,7 @@ server <- function(input, output, session) {
   output$box <- renderUI({
     req(input$state)
     df <- protected_area(input$state, "GAP_Sts")
-    total <- df |> filter(GAP_Sts %in% c("1", "2")) |> pull(percent) |> sum() |> round(3)
+    total <- df |> filter(GAP_Sts %in% input$gap_codes) |> pull(percent) |> sum() |> round(3)
     total <- total * 100
 
     value_box(glue("Protected Area:"), glue("{total}%"), showcase = plotOutput("plot"))
@@ -59,16 +68,16 @@ server <- function(input, output, session) {
 
   output$map <- renderMaplibre({
 
-    state <- input$state
+    print(input$gap_codes)
 
     if (!input$switch) {
-      gdf <- compute_gdf(state) |> filter(GAP_Sts %in% c("1", "2"))
+      gdf <- compute_gdf(input$state) |> filter(GAP_Sts %in% input$gap_codes)
       map_filter <- mapgl_filter(gdf, "row_n")
       m <- pmtiles_map(pad_pmtiles, "padus4", "row_n", map_filter, GAP_fill_color)
 
     } else {
 
-      m <- hex_map(state = state, "Unit_Nm", GAP_fill_color)
+      m <- hex_map(state = input$state, "Unit_Nm", GAP_fill_color)
     }
 
     m |>  
