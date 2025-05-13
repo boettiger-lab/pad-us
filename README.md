@@ -10,5 +10,7 @@ appPort: 8080
 ---
 
 
-:hugs: Shiny App on Huggingface: <https://huggingface.co/spaces/boettiger-lab/pad-us>
+<!--  :hugs: Shiny App on Huggingface: <https://huggingface.co/spaces/boettiger-lab/pad-us>   -->
+
+:building: Kubernetes-hosted app on NRP, <https://us-pad.nrp-nautilus.io>
 
