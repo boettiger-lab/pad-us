@@ -5,27 +5,28 @@ library(mapgl)
 library(glue)
 library(memoise)
 
-CACHE = "tmp" #tempfile()
+CACHE = tempfile()
+endpoint = "minio.carlboettiger.info"
 
 #Sys.setenv("LD_LIBRARY_PATH" = "/opt/conda/lib:$LD_LIBRARY_PATH")
 
 duckdb_secrets()
 hectres_h8 = 737327.598	/ 10000
 
-pad_pmtiles = "https://minio.carlboettiger.info/public-biodiversity/pad-us-4/pad-us-4.pmtiles"
-tract_pmtiles = "https://minio.carlboettiger.info/public-social-vulnerability/2022/SVI2022_US_tract.pmtiles"
+pad_pmtiles = glue("https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.pmtiles")
+tract_pmtiles = glue("https://{endpoint}/public-social-vulnerability/2022/SVI2022_US_tract.pmtiles")
 
 # gbif = open_dataset("s3://public-gbif/hex")
 # Full PAD variables
-pad_us = open_dataset("https://minio.carlboettiger.info/public-biodiversity/pad-us-4/pad-us-4.parquet", recursive = FALSE) |>
+pad_us = open_dataset(glue("https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.parquet"), recursive = FALSE) |>
   select(GAP_Sts, Mang_Type, row_n, geom, GIS_Acres)
 
 # hexed data
-tracts_z8 = open_dataset("https://minio.carlboettiger.info/public-social-vulnerability/2022-tracts-h3-z8.parquet", recursive = FALSE) |>
+tracts_z8 = open_dataset(glue("https://{endpoint}/public-social-vulnerability/2022-tracts-h3-z8.parquet"), recursive = FALSE) |>
             mutate(h8 = tolower(h8))
-pad_z8 =  open_dataset("https://minio.carlboettiger.info/public-biodiversity/pad-us-4/pad-h3-z8.parquet", recursive = FALSE)
-mobi = open_dataset("https://minio.carlboettiger.info/public-mobi/hex/all-richness-h8.parquet", recursive = FALSE) |> select(richness = Z, h8)
-svi = open_dataset("https://minio.carlboettiger.info/public-social-vulnerability/2022/SVI2022_US_tract.parquet", recursive = FALSE)  |> 
+pad_z8 =  open_dataset(glue("https://{endpoint}/public-biodiversity/pad-us-4/pad-h3-z8.parquet"), recursive = FALSE)
+mobi = open_dataset(glue("https://{endpoint}/public-mobi/hex/all-richness-h8.parquet"), recursive = FALSE) |> select(richness = Z, h8)
+svi = open_dataset(glue("https://{endpoint}/public-social-vulnerability/2022/SVI2022_US_tract.parquet"), recursive = FALSE)  |> 
   select(FIPS, RPL_THEMES) |>
   filter(RPL_THEMES > 0)
 
@@ -116,7 +117,7 @@ hex_map <- function(state = "California",
     rename(h3id = h8) |> 
     to_h3j(glue("s3://{path}"))
 
-  endpoint <- Sys.getenv("AWS_S3_ENDPOINT")
+  endpoint <- Sys.getenv("AWS_PUBLIC_ENDPOINT")
   url <- glue("https://{endpoint}/{path}")
 
   maplibre(center=c(-105., 38.), zoom = 5) |>
@@ -140,7 +141,7 @@ gg_GAP_colors <- function() {
 }
 
 get_states <- memoise(function() {
-  states <- glue::glue("https://minio.carlboettiger.info/public-social-vulnerability/2022/SVI2022_US_county.parquet") |>
+  states <- glue::glue("https://{endpoint}/public-social-vulnerability/2022/SVI2022_US_county.parquet") |>
     duckdbfs::open_dataset(recursive = FALSE) |>
     dplyr::distinct(STATE) |>
     dplyr::arrange(STATE) |>
