@@ -1,2 +1,3 @@
 *.parquet
 *.xyz
+.ipynb_checkpoints/
