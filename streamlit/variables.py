@@ -71,7 +71,7 @@ states = (
 
 # Define color hex codes
 darkblue = "#00008B"
-blue = "#0000FF"
+blue = "#0096FF"
 lightblue = "#ADD8E6"
 darkgreen = "#006400"
 grey = "#808080"
@@ -93,7 +93,7 @@ style_options = {
                 ['LOC', lightblue],
                 ['DIST', darkgreen],
                 ['UNK', grey],
-                ['JNT', green],
+                ['JNT', pink],
                 ['TRIB', purple],
                 ['PVT', darkred],
                 ['NGO', orange]
@@ -125,3 +125,11 @@ style_options = {
         ]
     }
 }
+
+style_choice_columns = {'Manager Type':'Manager_Type',
+              'Access':'Public_Access_Type',
+              'Purpose':'Purpose_Type'
+             }
+
+metric_columns = {'svi': 'RPL_THEMES', 'mobi': 'richness'}
+
