@@ -2,30 +2,6 @@ import ibis
 from ibis import _
 from variables import *
 import altair as alt
-
-def tpl_style(ids, paint):
-    style =  {
-    "version": 8,
-    "sources": {
-        "tpl": {
-            "type": "vector",
-            "url": "pmtiles://" + pmtiles,
-            "attribution": "TPL"
-        },
-    },
-    "layers": [{
-            "id": "tpl",
-            "source": "tpl",
-            "source-layer": source_layer_name,
-            "type": "fill",
-            'filter': ['in', ['get', 'TPL_ID'], ["literal", ids]],
-            "paint": {
-                "fill-color": paint,
-                "fill-opacity": 1
-            }
-        }]
-    }
-    return style
     
 def get_counties(state_selection):
     if state_selection != 'All':
@@ -46,18 +22,17 @@ def get_ids(state_choice, county_choice, year_range):
             gdf = gdf.filter(_.county == county_choice)
     return gdf
 
-
-
 def get_landvote(gdf, style_choice):
     group_col = style_choice_columns[style_choice]
-    ids = gdf.filter(_.measure_status == 'Pass').filter(_.measure_year < _.Close_Year).execute()
-    ids = ids['TPL_ID'].tolist()
-    ids = list(set(ids)) # get unique 
-    landvote_df = gdf.filter(_.TPL_ID.isin(ids))
+    # ids = gdf.filter(_.measure_status == 'Pass').filter(_.measure_year < _.Close_Year).execute()
+    # ids = gdf.filter(_.measure_status == 'Pass').execute()
+    # ids = ids['TPL_ID'].tolist()
+    # ids = list(set(ids)) # get unique 
+    landvote_df = gdf.filter(_.measure_status == 'Pass')
     landvote_df = landvote_df.group_by(group_col).agg(total_amount = _.Amount.sum(),
                                                  total_approved = _.measure_amount.sum())
+    print(landvote_df.head().execute())
     return landvote_df, group_col
-
 
 def fit_bounds(state_choice, county_choice, m):
     if state_choice[0] != "All":
@@ -74,15 +49,14 @@ def get_summary_chart(gdf, style_choice, session_state, paint):
     group_col = style_choice_columns[style_choice]
     df = gdf.group_by(group_col).agg(percent = _.count()*z8_hex_m2/total_area_m2).execute()
     get_donut(df, style_choice, group_col, paint)
-
-    metrics = [metric_columns[keys[0]] for keys in session_state.items() if keys[1]]
+    metrics = [metric_columns[keys[0]] for keys in session_state.items() if (keys[1] and keys[1] in metric_columns)]
     if metrics:
         for metric_col in metrics:
-            if metric_col == 'measure_status':
-                total_measures = gdf.select(_[metric_col]).count().execute()
-                df = gdf.group_by(group_col).agg(((_[metric_col]=='Pass').count()/total_measures).name(metric_col)).execute()
-            else:
-                df = gdf.group_by(group_col).agg(_[metric_col].mean().name(metric_col)).execute()
+            # if metric_col == 'measure_status':
+            #     total_measures = gdf.select(_[metric_col]).count().execute()
+            #     df = gdf.group_by(group_col).agg(((_[metric_col]=='Pass').count()/total_measures).name(metric_col)).execute()
+            # else:
+            df = gdf.group_by(group_col).agg(_[metric_col].mean().name(metric_col)).execute()
             get_bar(df, style_choice, group_col, metric_col, paint)
     return 
 
@@ -127,7 +101,32 @@ def get_donut(df, style_choice, group_col, paint):
 
     st.altair_chart(chart, use_container_width = True)
     return 
+    
+def tpl_style(ids, paint):
+    style =  {
+    "version": 8,
+    "sources": {
+        "tpl": {
+            "type": "vector",
+            "url": "pmtiles://" + pmtiles,
+            "attribution": "TPL"
+        },
+    },
+    "layers": [{
+            "id": "tpl",
+            "source": "tpl",
+            "source-layer": source_layer_name,
+            "type": "fill",
+            'filter': ['in', ['get', 'TPL_ID'], ["literal", ids]],
+            "paint": {
+                "fill-color": paint,
+                "fill-opacity": 1
+            }
+        }]
+    }
+    return style
 
+    
 def get_legend(paint):
     """
     Generates a legend dictionary with color mapping and formatting adjustments.
@@ -139,8 +138,6 @@ def get_legend(paint):
     return legend, position, bg_color, fontsize
 
 
-## Carl code 
-# +
 
 @st.cache_data
 def tpl_summary(_df):

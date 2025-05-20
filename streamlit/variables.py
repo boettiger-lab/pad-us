@@ -10,7 +10,7 @@ from datetime import timedelta
 import re
 duckdb_install_h3()
 
-con = ibis.duckdb.connect(extensions = ["spatial", "h3"])
+con = ibis.duckdb.connect("duck.db",extensions = ["spatial", "h3"])
 set_secrets(con)
 
 # Get signed URLs to access license-controlled layers
@@ -23,6 +23,7 @@ pad_z8 = con.read_parquet("https://minio.carlboettiger.info/public-biodiversity/
 mobi = con.read_parquet("https://minio.carlboettiger.info/public-mobi/hex/all-richness-h8.parquet").select("h8", "Z").rename(richness = "Z")
 svi = con.read_parquet("https://minio.carlboettiger.info/public-social-vulnerability/2022/SVI2022_US_tract.parquet").select("FIPS", "RPL_THEMES").filter(_.RPL_THEMES > 0).rename(svi = "RPL_THEMES").rename(FIPS_tract = "FIPS")
 tpl_geom_url = "s3://shared-tpl/tpl.parquet"
+tpl_geom = con.read_parquet(tpl_geom_url).mutate(geom = _.geom.convert("ESRI:102039", "EPSG:4326"))
 tpl_landvote_joined_url = "s3://shared-tpl/tpl_almanac_landvote_h3_z8.parquet"
 tpl_z8_url = "s3://shared-tpl/tpl_h3_z8.parquet"
 
@@ -52,7 +53,11 @@ select_cols = ['fid','TPL_ID','landvote_id',
  'measure_status','measure_purpose',
  'measure_amount',
  'richness','svi',
- 'h8','geom']
+ 'h8']
+
+ # 'h8','geom']
+  # ]
+
 
 database = (
   tpl_z8.drop('State','County')
@@ -62,7 +67,12 @@ database = (
   # .inner_join(pad_us, "row_n")
   .left_join(tracts_z8, "h8").drop('h8_right')
   .inner_join(svi, "FIPS_tract")
-).select(select_cols)
+).select(select_cols).distinct()
+
+database_geom = (database.drop('h8').distinct().inner_join(tpl_geom.select('geom','TPL_ID','fid','Shape_Area'), [database.TPL_ID == tpl_geom.TPL_ID, database.fid == tpl_geom.fid])
+            .mutate(acres = _.Shape_Area*0.0002471054)
+            # .mutate(area = _.geom.area())
+           ).distinct()
 
 pmtiles = client.get_presigned_url(
     "GET",
@@ -90,12 +100,13 @@ darkblue = "#00008B"
 blue = "#0096FF"
 lightblue = "#ADD8E6"
 darkgreen = "#006400"
-grey = "#808080"
+grey = "#c4c3c3"
+dark_grey = "#5a5a5a"
 green = "#008000"
 purple = "#800080"
 darkred = "#8B0000"
 orange = "#FFA500"
-red = "#FF0000"
+red = "#e64242"
 yellow = "#FFFF00"
 pink = '#FFC0CB'
 
@@ -108,7 +119,7 @@ style_options = {
                 ['STAT', blue],
                 ['LOC', lightblue],
                 ['DIST', darkgreen],
-                ['UNK', grey],
+                ['UNK', dark_grey],
                 ['JNT', pink],
                 ['TRIB', purple],
                 ['PVT', darkred],
@@ -121,7 +132,7 @@ style_options = {
         'stops': [
             ['OA', green],
             ['XA', red],
-            ['UK', grey],
+            ['UK', dark_grey],
             ['RA', orange]
         ]
     },
@@ -131,7 +142,7 @@ style_options = {
         'stops': [
             ['FOR', green],
             ['HIST', red],
-            ['UNK', grey],
+            ['UNK', dark_grey],
             ['OTH', grey],
             ['FARM', yellow],
             ['REC', blue],
@@ -207,4 +218,21 @@ notused = {
                 ] 
 }
 
+from langchain_openai import ChatOpenAI
+import streamlit as st
+# from langchain_openai.chat_models.base import BaseChatOpenAI
 
+## dockerized streamlit app wants to read from os.getenv(), otherwise use st.secrets
+import os
+api_key = os.getenv("NRP_API_KEY")
+if api_key is None:
+    api_key = st.secrets["NRP_API_KEY"]
+
+llm_options = {
+    # "llama-3.3-quantized": ChatOpenAI(model = "cirrus", api_key=st.secrets['CIRRUS_LLM_API_KEY'], base_url = "https://llm.cirrus.carlboettiger.info/v1",  temperature=0),
+    "llama3.3": ChatOpenAI(model = "llama3-sdsc", api_key=api_key, base_url = "https://llm.nrp-nautilus.io/",  temperature=0),
+    "gemma3": ChatOpenAI(model = "gemma3", api_key=api_key, base_url = "https://llm.nrp-nautilus.io/",  temperature=0),
+    # "DeepSeek-R1-Distill-Qwen-32B": BaseChatOpenAI(model = "DeepSeek-R1-Distill-Qwen-32B", api_key=api_key, base_url = "https://llm.nrp-nautilus.io/",  temperature=0),
+    "watt": ChatOpenAI(model = "watt", api_key=api_key, base_url = "https://llm.nrp-nautilus.io/",  temperature=0),
+    # "phi3": ChatOpenAI(model = "phi3", api_key=api_key, base_url = "https://llm.nrp-nautilus.io/",  temperature=0),
+}
