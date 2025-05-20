@@ -1,62 +1,78 @@
 import os
 import ibis
 from ibis import _
+import ibis.selectors as s
 from cng.utils import *
 from cng.h3 import *
-duckdb_install_h3()
-
-
-con = ibis.duckdb.connect(extensions = ["spatial", "h3"])
-# install_h3(con)
-set_secrets(con)
-
-endpoint = os.environ["AWS_S3_ENDPOINT"]
-
-pad_pmtiles   = f"https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.pmtiles"
-tract_pmtiles = f"https://{endpoint}/public-social-vulnerability/2022/SVI2022_US_tract.pmtiles"
-pad_us    = con.read_parquet(f"https://{endpoint}/public-biodiversity/pad-us-4/pad-us-4.parquet").select("GAP_Sts", "Mang_Type", "row_n","State_Nm")
-tracts_z8 = con.read_parquet(f"https://{endpoint}/public-social-vulnerability/2022-tracts-h3-z8.parquet").select('FIPS','h8').mutate(h8 = _.h8.lower())
-pad_z8    = con.read_parquet(f"https://{endpoint}/public-biodiversity/pad-us-4/pad-h3-z8.parquet")
-mobi      = con.read_parquet(f"https://{endpoint}/public-mobi/hex/all-richness-h8.parquet").select("h8", "Z").rename(richness = "Z")
-svi       = con.read_parquet(f"https://{endpoint}/public-social-vulnerability/2022/SVI2022_US_tract.parquet").select("FIPS", "RPL_THEMES").filter(_.RPL_THEMES > 0)
-
-
 from minio import Minio
 import streamlit 
 from datetime import timedelta
+import re
+duckdb_install_h3()
+
+con = ibis.duckdb.connect(extensions = ["spatial", "h3"])
+set_secrets(con)
 
 # Get signed URLs to access license-controlled layers
 key = st.secrets["MINIO_KEY"]
 secret = st.secrets["MINIO_SECRET"]
 client = Minio("minio.carlboettiger.info", key, secret)
 
-pmtiles = client.get_presigned_url(
-    "GET",
-    "shared-tpl",   
-    # "tpl.pmtiles",
-    "tpl_v2.pmtiles",
-    # "tpl_h3_z8.pmtiles",
-    expires=timedelta(hours=2),
-)
+tracts_z8 = con.read_parquet("https://minio.carlboettiger.info/public-social-vulnerability/2022-tracts-h3-z8.parquet").select('FIPS','h8').mutate(h8 = _.h8.lower()).rename(FIPS_tract = "FIPS")
+pad_z8 = con.read_parquet("https://minio.carlboettiger.info/public-biodiversity/pad-us-4/pad-h3-z8.parquet")
+mobi = con.read_parquet("https://minio.carlboettiger.info/public-mobi/hex/all-richness-h8.parquet").select("h8", "Z").rename(richness = "Z")
+svi = con.read_parquet("https://minio.carlboettiger.info/public-social-vulnerability/2022/SVI2022_US_tract.parquet").select("FIPS", "RPL_THEMES").filter(_.RPL_THEMES > 0).rename(svi = "RPL_THEMES").rename(FIPS_tract = "FIPS")
+tpl_geom_url = "s3://shared-tpl/tpl.parquet"
+tpl_landvote_joined_url = "s3://shared-tpl/tpl_almanac_landvote_h3_z8.parquet"
+tpl_z8_url = "s3://shared-tpl/tpl_h3_z8.parquet"
 
+landvote = (con.read_parquet("s3://shared-tpl/landvote_h3_z8.parquet")
+            .rename(FIPS_county = "FIPS", measure_amount = 'Conservation Funds Approved', 
+                    measure_status = "Status", measure_purpose = "Purpose",)
+            .mutate(measure_year = _.Date.year()).drop('Date','geom'))
+            
+tpl_drop_cols = ['Reported_Acres','Close_Date','EasementHolder_Name',
+        'Data_Provider','Data_Source','Data_Aggregator',
+        'Program_ID','Sponsor_ID']
 
-tpl_parquet = client.get_presigned_url(
-    "GET",
-    "shared-tpl",
-    "tpl_h3_z8.parquet",
-    expires=timedelta(hours=2),
-)
+tpl_z8 = con.read_parquet(tpl_z8_url).mutate(h8 = _.h8.lower()).drop(tpl_drop_cols)
 
-tpl = con.read_parquet(tpl_parquet).mutate(h8 = _.h8.lower())
+select_cols = ['fid','TPL_ID','landvote_id',
+'state','state_name','county',
+ 'FIPS_county', 'FIPS_tract',
+ 'city','jurisdiction',
+ 'Close_Year', 'Site_Name',
+ 'Owner_Name','Owner_Type',
+ 'Manager_Name','Manager_Type',
+ 'Purchase_Type','EasementHolder_Type',
+ 'Public_Access_Type','Purpose_Type',
+ 'Duration_Type','Amount',
+ 'Program_Name','Sponsor_Name',
+ 'Sponsor_Type','measure_year',
+ 'measure_status','measure_purpose',
+ 'measure_amount',
+ 'richness','svi',
+ 'h8','geom']
 
 database = (
-  tpl
-  .left_join(mobi, "h8")
-  .left_join(pad_z8, "h8")
-  .inner_join(pad_us, "row_n")
-  .left_join(tracts_z8, "h8")
-  .inner_join(svi, "FIPS")
+  tpl_z8.drop('State','County')
+  .left_join(landvote, "h8").drop('h8_right')
+  .left_join(mobi, "h8").drop('h8_right')
+  # .left_join(pad_z8, "h8").drop('h8_right')
+  # .inner_join(pad_us, "row_n")
+  .left_join(tracts_z8, "h8").drop('h8_right')
+  .inner_join(svi, "FIPS_tract")
+).select(select_cols)
+
+pmtiles = client.get_presigned_url(
+    "GET",
+    "shared-tpl",
+    # "tpl_v2.pmtiles",
+    "tpl_almanac_landvote_h3_z8.pmtiles",
+    expires=timedelta(hours=2),
 )
+source_layer_name = re.sub(r'\W+', '', os.path.splitext(os.path.basename(pmtiles))[0]) #stripping hyphens to get layer name 
+
 
 states = (
     "All", "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
@@ -123,13 +139,72 @@ style_options = {
             ['SCE', orange],
             ['RAN', pink]
         ]
-    }
+    },
+    "Year": {
+        'property': 'Close_Year',
+        'type': 'categorical',
+        'stops': [
+            [1998, '#1f77b4'],  # blue
+            [1999, '#ff7f0e'],  # orange
+            [2000, '#2ca02c'],  # green
+            [2001, '#d62728'],  # red
+            [2002, '#9467bd'],  # purple
+            [2003, '#8c564b'],  # brown
+            [2004, '#e377c2'],  # pink
+            [2005, '#7f7f7f'],  # gray
+            [2006, '#bcbd22'],  # olive
+            [2007, '#17becf'],  # cyan
+            [2008, '#aec7e8'],  # light blue
+            [2009, '#ffbb78'],  # light orange
+            [2010, '#98df8a'],  # light green
+            [2011, '#ff9896'],  # light red
+            [2012, '#c5b0d5'],  # light purple
+            [2013, '#c49c94'],  # light brown
+            [2014, '#f7b6d2'],  # light pink
+            [2015, '#c7c7c7'],  # light gray
+            [2016, '#dbdb8d'],  # light olive
+            [2017, '#9edae5'],  # light cyan
+            [2018, '#393b79'],  # dark blue
+            [2019, '#637939'],  # dark green
+            [2020, '#8c6d31'],  # dark brown
+            [2021, '#843c39'],  # dark red
+        ]
+    },
+    # "Landvote Status": {
+    #     'property': 'measure_status',
+    #     'type': 'categorical',
+    #     'stops': [
+    #         ['Pass', "#417d41"],
+    #         ['Fail', "#f3d3b1"],  
+    #     ]
+    # },
 }
 
-style_choice_columns = {'Manager Type':'Manager_Type',
-              'Access':'Public_Access_Type',
-              'Purpose':'Purpose_Type'
+style_choice_columns = {'Manager Type': style_options['Manager Type']['property'],
+              'Access' : style_options['Access']['property'],
+              'Purpose': style_options['Purpose']['property'],
+              'Year': style_options['Year']['property'],
+              # 'Landvote Status':style_options['Landvote Status']['property'],
              }
 
-metric_columns = {'svi': 'RPL_THEMES', 'mobi': 'richness'}
+metric_columns = {'svi': 'svi', 'mobi': 'richness', 'landvote':'measure_status'}
+
+
+notused = {
+    "Amount": ["interpolate",
+                ['exponential', 1], 
+                ["get", "Amount"],
+                       0,	"#FCE2DC",
+                34273487,	"#F8C3BF",
+                68546973,	"#F4A5A2",
+                102820460,	"#F08785",
+                137093947,	"#EB6968",
+                171367433,	"#DB5157",
+                205640920,	"#BE4152",
+                239914407,	"#A0304C",
+                274187893,	"#832047",
+                308461380,	"#661042",
+                ] 
+}
+
 
