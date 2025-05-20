@@ -24,14 +24,9 @@ def get_ids(state_choice, county_choice, year_range):
 
 def get_landvote(gdf, style_choice):
     group_col = style_choice_columns[style_choice]
-    # ids = gdf.filter(_.measure_status == 'Pass').filter(_.measure_year < _.Close_Year).execute()
-    # ids = gdf.filter(_.measure_status == 'Pass').execute()
-    # ids = ids['TPL_ID'].tolist()
-    # ids = list(set(ids)) # get unique 
     landvote_df = gdf.filter(_.measure_status == 'Pass')
     landvote_df = landvote_df.group_by(group_col).agg(total_amount = _.Amount.sum(),
                                                  total_approved = _.measure_amount.sum())
-    print(landvote_df.head().execute())
     return landvote_df, group_col
 
 def fit_bounds(state_choice, county_choice, m):
