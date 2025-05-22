@@ -3,14 +3,15 @@ import leafmap.maplibregl as leafmap
 from cng.h3 import *
 # from variables import *
 from utils import *
+from ibis import _
 
-# con = ibis.duckdb.connect("duck.db", extensions=["spatial"])
 current_tables = con.list_tables()
 
 if "mydata" not in set(current_tables):
     con.create_table("mydata", database_geom)
+    
+chatbot_data = con.table("mydata")
 
-data = con.table("mydata")
 
 st.set_page_config(layout="wide",
                    page_title="TPL Conservation Almanac",
@@ -27,7 +28,12 @@ with st.sidebar:
     paint = style_options[style_choice]
     st.divider()
 
-    st.markdown("Filters")
+    # st.markdown("Filters")
+    year_range = st.slider(
+    "Acquisition Year", min_value = 1998, max_value = 2021, value=(1998, 2021)
+)
+    st.divider()
+
     state_choice = st.selectbox("State", states,index = 6, placeholder='Pick a state')
     one_state = state_choice[0] != 'All'
     counties = get_counties(state_choice)
@@ -35,15 +41,8 @@ with st.sidebar:
         county_choice = st.selectbox("County", counties, index = 0, placeholder='Select a county')
     else:
         county_choice = None
-    year_range = st.slider(
-    "Year", min_value = 1998, max_value = 2021, value=(1998, 2021)
-)
+
     st.divider()
-    st.markdown("Summary Charts")
-    # show_landvote = st.toggle("Landvote Measures", key = 'landvote')
-    show_mobi = st.toggle("Biodiversity", key = 'mobi')
-    show_svi = st.toggle("SVI", key = 'svi')
-    show_landvote = st.toggle('Landvote')
 
 # even if we only pick 1 state or 1 gap code, make them lists so it still works with our functions 
 if isinstance(state_choice, str):
@@ -51,13 +50,13 @@ if isinstance(state_choice, str):
 
 ## Respond to sidebar
 m = leafmap.Map(style = "positron")
+# m.add_basemap('NASAGIBS.BlueMarble')
 
 # get all the ids that correspond to the filter
-# gdf = get_ids(state_choice, gap_choice, year_range)
-gdf = get_ids(state_choice, county_choice, year_range)
+gdf = filter_data(tpl_table, state_choice, county_choice, year_range)
+gdf_landvote = filter_data(landvote_table, state_choice, county_choice, year_range)
 ids = gdf.execute()['TPL_ID'].tolist()
 unique_ids = list(set(ids))
-
 
 chatbot_container = st.container()
 with chatbot_container:
@@ -97,7 +96,7 @@ from langchain_core.prompts import ChatPromptTemplate
 prompt = ChatPromptTemplate.from_messages([
     ("system", template),
     ("human", "{input}")
-]).partial(dialect="duckdb", table_info = data.schema())
+]).partial(dialect="duckdb", table_info = chatbot_data.schema())
 
 # chatbot_toggles = {key: False for key in keys}
 structured_llm = llm.with_structured_output(SQLResponse)
@@ -119,7 +118,7 @@ def run_sql(query,paint):
         st.success(explanation)
         return pd.DataFrame({'TPL_ID' : []})
         
-    result = data.sql(sql_query).distinct().execute()
+    result = chatbot_data.sql(sql_query).distinct().execute()
     if result.empty :
         explanation = "This query did not return any results. Please try again with a different query."
         st.warning(explanation, icon="⚠️")
@@ -131,9 +130,9 @@ def run_sql(query,paint):
             return result
     elif ("TPL_ID" and "geom" in result.columns): 
         style = tpl_style(result["TPL_ID"].tolist(), paint)
-        legend, position, bg_color, fontsize = get_legend(paint)
+        # legend, position, bg_color, fontsize = get_legend(paint)
     
-        m.add_legend(legend_dict = legend, position = position, bg_color = bg_color, fontsize = fontsize)
+        # m.add_legend(legend_dict = legend, position = position, bg_color = bg_color, fontsize = fontsize)
         m.add_pmtiles(pmtiles, style=style, opacity=0.5, tooltip=True, fit_bounds=True)
         m.fit_bounds(result.total_bounds.tolist())    
         result = result.drop('geom',axis = 1) #printing to streamlit so I need to drop geom
@@ -181,65 +180,52 @@ with st.container():
 
 if 'out' not in locals():
     m.add_pmtiles(pmtiles, style=tpl_style(unique_ids, paint), opacity=0.5, tooltip=True, fit_bounds=True)
-    legend, position, bg_color, fontsize = get_legend(paint)
-    m.add_legend(legend_dict = legend, position = position, bg_color = bg_color, fontsize = fontsize)
+    # legend, position, bg_color, fontsize = get_legend(paint)
+    # m.add_legend(legend_dict = legend, position = position, bg_color = bg_color, fontsize = fontsize)
     #zoom to state(s)
     fit_bounds(state_choice, county_choice, m)
 
 ## Render display panels
-col1, col2 = st.columns([2,1])
-
-with col1:
-    m.to_streamlit()
-    with st.expander("🔍 View/download data"): # adding data table  
-        if 'out' not in locals():
-            st.dataframe(gdf.head(100).execute(), use_container_width = True)  
-        else:
-            st.dataframe(out, use_container_width = True)
+# 
+m.to_streamlit()
+with st.expander("🔍 View/download data"): # adding data table  
+    if 'out' not in locals():
+        st.dataframe(gdf.drop('geom').head(100).execute(), use_container_width = True)  
+    else:
+        st.dataframe(out, use_container_width = True)
 
 
-with col2:
-    get_summary_chart(gdf,style_choice,st.session_state, paint)
-    if show_landvote:
-        landvote_df, group_col = get_landvote(gdf, style_choice)
-        # st.markdown('Protected Area Cost')
-        # get_bar(landvote_df, style_choice, group_col, 'total_amount', paint)
-        st.markdown('Measure Ballot Funds (Approved)')
-        get_bar(landvote_df, style_choice, group_col, 'total_approved', paint)
-
-
-######### carl's code
-from ibis import _
-
-public_dollars, private_dollars, tribal_dollars, total_dollars = tpl_summary(data)
-public_delta, private_delta, trib_delta = calc_delta(data)
+public_dollars, private_dollars, total_dollars = tpl_summary(gdf)
+public_delta, private_delta = calc_delta(gdf)
 # -
 
 with st.container():
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     col1.metric(label=f"Public", value=f"${public_dollars:,}", delta = f"{public_delta:}%")
     col2.metric(label=f"Private", value=f"${private_dollars:,}", delta = f"{private_delta:}%")
-    col3.metric(label=f"Tribal", value=f"${tribal_dollars:,}", delta = f"{trib_delta:}%")
-    col4.metric(label=f"Total", value=f"${total_dollars:,}")    
+    col3.metric(label=f"Total", value=f"${total_dollars:,}")    
 
-column = paint["property"]
 
-area_totals = get_area_totals(data,column)
-timeseries = calc_timeseries(data, column)
 
-# +
-st.divider()
+col1, col2, col3 = st.columns(3)
+with col1:
+    # st.markdown('Protected Area Cost')
+    gdf_tpl = group_data(gdf, 'Acquisition Cost')
+    get_bar(gdf_tpl, style_choice, 'year', 'total_amount', paint,'Year','Acquisition Cost ($)',"Yearly investment ($) in protected area")
 
-with st.container():
-    plt1, plt2 = st.columns(2)
+with col2:
+    # st.markdown('Measure Cost')
+    gdf_landvote = group_data(gdf_landvote.filter(_.measure_status == 'Pass'), 'Measure Cost')
+    get_bar(gdf_landvote, style_choice, 'year', 'total_amount', paint, 'Year','Funds Approved ($)','Yearly funds from conservation ballot measures')
+
+area_totals = get_area_totals(gdf, 'year')
+# timeseries = calc_timeseries(gdf, column)
+
+
+with col3:
     
-    with plt1:
-        "Total Area protected (hectares):"
-        st.altair_chart(bar(area_totals, column, paint))
-    with plt2:
-        "Annual investment ($) in protected area"
-        st.altair_chart(chart_time(timeseries, column, paint))
-
+    "Total Area protected (hectares):"
+    st.altair_chart(bar(area_totals, 'year', paint))
 
 # # +
 
